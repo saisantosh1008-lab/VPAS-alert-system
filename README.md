@@ -1,12 +1,19 @@
-# VPAS-alert-system
-Decentralized Inter-vehicle Ranging &amp; Emergency Collision Threat-alert.
+# VPAS — Vehicle Proximity Alert System
 
-# Vehicle-Proximity-Alert-System-VPAS-Decentralized-Mesh-
-a part of V2V communication. Decentralized Inter-vehicle Ranging &amp; Emergency Collision Threat-alert.
+**Decentralized inter-vehicle ranging & emergency collision threat-alert, built on ESP32 + ESP-NOW.**
+A part of V2V (Vehicle-to-Vehicle) communication research.
 
-A multi-node Vehicle-to-Vehicle (V2V) proximity warning system built on ESP32 microcontrollers. Each vehicle node continuously broadcasts its presence over ESP-NOW, measures its distance to nearby vehicles using WiFi signal strength, and triggers escalating visual and audible alerts as vehicles approach each other.
+> 🏆 **First prize — project exhibition.** Built by a student team to reduce head-on and blind-corner collisions on hill stations and steep, winding roads.
 
-Built as a scalable, infrastructure-free mesh: no router, no access point, no internet connection required, No pre-establish IDs. Nodes discover each other automatically and communicate directly, radio to radio.
+A multi-node V2V proximity warning system built on ESP32 microcontrollers. Each vehicle node continuously broadcasts its presence over ESP-NOW, estimates its distance to nearby vehicles from WiFi signal strength, and triggers escalating visual and audible alerts as vehicles approach each other.
+
+Built as a scalable, infrastructure-free mesh: no router, no access point, no internet connection and no pre-assigned pairing. Nodes discover each other automatically and communicate directly, radio to radio.
+
+![Two prototype vehicle nodes](docs/images/prototype-two-nodes.jpeg)
+
+## Why this project?
+
+On hill roads, hairpin bends and steep gradients block line of sight, and mobile networks are often absent — so cloud-based or app-based warning systems fail exactly where they are needed. A drone-like radio-to-radio link needs no tower: two approaching vehicles can warn each other *before* they can see each other. VPAS is a low-cost prototype of that idea.
 
 ---
 
@@ -41,11 +48,11 @@ Because transmission runs on a dedicated task and reception runs via an interrup
 
 | Distance to nearest peer | Zone | LED | Buzzer |
 |---|---|---|---|
-| Greater than 50 m | Neutral | Off | Off |
-| 31-49 m | Caution | Slow blink (500 ms) | Off |
-| Less than 30 m | Danger | Steady on | Rapid beep (80 ms) |
+| Greater than 120 m (`SAFE_DISTANCE_M`) | Neutral | Off | Off |
+| 30 m to 120 m | Caution | Slow blink (500 ms) | Off |
+| Less than 30 m (`DANGER_DISTANCE_M`) | Danger | Steady on | Rapid beep (80 ms) |
 
-If a node remains in the danger zone continuously for 20 seconds, it prints its GPS location to the Serial Monitor as an escalated alert. The report fires once per continuous danger streak and resets when the vehicles separate.
+Thresholds are configurable (see [Configuration](#configuration)). If a node remains in the danger zone continuously for 20 seconds, it prints its GPS location to the Serial Monitor as an escalated alert. The report fires once per continuous danger streak and resets when the vehicles separate.
 
 ---
 
@@ -96,7 +103,7 @@ Per node (multiply by the number of vehicles):
 ### Flashing
 
 1. Clone or download this repository.
-2. Open `V2V_CollisionAvoidance.ino` in the Arduino IDE. The folder name must match the `.ino` filename.
+2. Open `V2V_CollisionAvoidance/V2V_CollisionAvoidance.ino` in the Arduino IDE. The folder name must match the `.ino` filename.
 3. Select your board under **Tools → Board** (e.g. ESP32 Dev Module) and the correct COM port.
 4. **Set a unique node ID for each board.** Change this line near the top of the sketch:
    ```cpp
@@ -113,19 +120,29 @@ Repeat for each vehicle, incrementing `NODE_ID` each time.
 
 All tunable parameters live in the `USER CONFIG` block at the top of the sketch:
 
-```cpp#define NODE_ID             []     //[1,2,3,..] unique per board
+```cpp
+#define NODE_ID                  1     // unique per board: 0, 1, 2, ...
 #define WIFI_CHANNEL             1     // must match on all nodes
 #define MAX_NODES               20     // peer table size
 
 #define TX_POWER_AT_1M       -40.0f    // RSSI measured at 1 meter (calibrate this)
-#define PATH_LOSS_EXPONENT     2.5f    // 2.0 open space, 3.0–4.0 indoors
+#define PATH_LOSS_EXPONENT     2.5f    // 2.0 open space, 3.0-4.0 indoors
 
-#define SAFE_DISTANCE_M       120.0f    // neutral zone threshold
-#define DANGER_DISTANCE_M      30.0f    // danger zone threshold
+#define SAFE_DISTANCE_M       120.0f   // neutral zone threshold
+#define DANGER_DISTANCE_M      30.0f   // danger zone threshold
 
 #define CAUTION_BLINK_MS       500     // LED blink rate in caution zone
 #define DANGER_BEEP_MS          80     // buzzer beep rate in danger zone
 #define SUSTAINED_DANGER_MS  20000     // time in danger before GPS report
+```
+
+### Distance model
+
+Distance is estimated with the log-distance path-loss model:
+
+```
+d = 10 ^ ((TX_POWER_AT_1M - RSSI) / (10 * PATH_LOSS_EXPONENT))
+```
 
 ### Calibration
 
@@ -134,7 +151,6 @@ For meaningful distance readings, calibrate `TX_POWER_AT_1M` for your specific h
 1. Flash two boards and place them exactly 1 meter apart.
 2. Read the RSSI value printed in the Serial Monitor.
 3. Set `TX_POWER_AT_1M` to that value and re-flash both boards.
-```
 
 Adjust `PATH_LOSS_EXPONENT` based on environment — lower for open outdoor line-of-sight, higher for indoor or obstructed testing.
 
@@ -142,17 +158,31 @@ Adjust `PATH_LOSS_EXPONENT` based on environment — lower for open outdoor line
 
 ## Example Output
 
-```Booting V2V node, NODE_ID = 0
-All tasks started.
-[NODE 2] WiFi handshake complete with NODE 1 (RSSI -52 dBm)
-[NODE 2] Distance to NODE 1: 225.24 m (RSSI -52 dBm, handshake OK)
-[NODE 2] Distance to NODE 1: 180.91 m (RSSI -52 dBm, handshake OK)
-[NODE 2] Distance to NODE 1: 100.15 m (RSSI -58 dBm, handshake OK)
-[NODE 2] Distance to NODE 1: 50.80 m (RSSI -59 dBm, handshake OK)
-[NODE 2] Distance to NODE 1: 30.80 m (RSSI -59 dBm, handshake OK)
-[NODE 2] Distance to NODE 1: 5.80 m (RSSI -60 dBm, handshake OK)
-[NODE 2] *** SUSTAINED DANGER (20s) with NODE 1 - GPS LOCATION: lat=20.267100 lon=85.842000 ***
+Illustrative Serial Monitor output as two vehicles approach (values follow the default constants `TX_POWER_AT_1M = -40`, `PATH_LOSS_EXPONENT = 2.5`; real RSSI will vary with your hardware and environment):
+
 ```
+Booting V2V node, NODE_ID = 0
+All tasks started.
+[NODE 0] WiFi handshake complete with NODE 1 (RSSI -95 dBm)
+[NODE 0] Distance to NODE 1: 158.49 m (RSSI -95 dBm, handshake OK)   <- neutral
+[NODE 0] Distance to NODE 1: 83.18 m (RSSI -88 dBm, handshake OK)    <- caution
+[NODE 0] Distance to NODE 1: 47.86 m (RSSI -82 dBm, handshake OK)    <- caution
+[NODE 0] Distance to NODE 1: 19.05 m (RSSI -72 dBm, handshake OK)    <- danger
+[NODE 0] Distance to NODE 1: 6.31 m (RSSI -60 dBm, handshake OK)     <- danger
+[NODE 0] *** SUSTAINED DANGER (20s) with NODE 1 - GPS LOCATION: lat=20.267100 lon=85.842000 ***
+```
+
+---
+
+## Demo & Testing
+
+| Prototype nodes | Live serial output |
+|---|---|
+| ![Two nodes](docs/images/prototype-two-nodes.jpeg) | ![Serial monitor](docs/images/serial-monitor-live-test.jpeg) |
+
+Tested with two ESP32 nodes mounted on small chassis, distance readings streamed to the Arduino IDE Serial Monitor. The test site used for outdoor trials:
+
+![Test site](docs/images/test-site-map.png)
 
 ---
 
@@ -161,7 +191,7 @@ All tasks started.
 The firmware uses FreeRTOS tasks distributed across both ESP32 cores:
 
 ```
-Core 1                                Core 2
+Core 0                                Core 1
 ┌──────────────────────┐            ┌────────────────────────┐
 │ Broadcast Task       │            │ GPS Task               │
 │ (ESP-NOW TX @ 10 Hz) │            │ (UART NMEA parsing)    │
@@ -249,12 +279,21 @@ Set the baud rate to 115200.
 .
 ├── V2V_CollisionAvoidance/
 │   └── V2V_CollisionAvoidance.ino    # Main firmware — flash to every node
-├── Test_GPSModule/
-│   └── Test_GPSModule.ino            # Standalone GPS test sketch
+├── docs/
+│   └── images/                       # Prototype photos, serial output, test site
+├── LICENSE
 └── README.md
 ```
 
-Standalone test sketches are included to verify individual modules before running the full system. Flashing and confirming each sensor separately makes hardware faults much faster to isolate.
+> The sketch folder name must match the `.ino` filename for the Arduino IDE to open it.
+
+## Roadmap
+
+- [ ] Standalone GPS test sketch
+- [ ] Field-calibrated RSSI constants for hill-road conditions
+- [ ] Use GPS position + heading in the collision decision (approaching vs. receding)
+- [ ] Moving-average / Kalman filter on RSSI to reduce zone flicker
+- [ ] UWB ranging (DWM3000) for accurate distance
 
 ---
 
